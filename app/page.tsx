@@ -5,6 +5,7 @@ import Navbar from './components/voice/Navbar';
 import Sidebar from './components/voice/Sidebar';
 import AvatarStage from './components/voice/AvatarStage';
 import InputBar from './components/voice/InputBar';
+import FloatingChat from './components/voice/FloatingChat';
 
 function getSessionId(): string {
   if (typeof window === 'undefined') return '';
@@ -23,8 +24,10 @@ export default function VoicePage() {
   const [sessionId, setSessionId] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  
-  // --- Language State ---
+  const [chatOpen, setChatOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  //Language State 
   const [language, setLanguage] = useState<AppLanguage>('en');
   const [ttsWarning, setTtsWarning] = useState('');
 
@@ -33,7 +36,7 @@ export default function VoicePage() {
 
   useEffect(() => { setSessionId(getSessionId()); }, []);
 
-  // --- Check if browser supports TTS voice ---
+  // Check if browser supports TTS voice
   useEffect(() => {
     if (language === 'en') { setTtsWarning(''); return; }
     const check = () => {
@@ -46,12 +49,16 @@ export default function VoicePage() {
     check();
   }, [language]);
 
-  // --- Dynamic Status Message ---
+  // Dynamic Status Message 
   const statusMsg = {
-    idle: attachedFile ? `📎 ${attachedFile.name} ready — hold mic` : LANGUAGES[language].nativeLabel === 'English' ? 'Hold the mic to speak' : `${LANGUAGES[language].nativeLabel} — mic hold කරන්න`,
+    idle: attachedFile
+      ? `📎 ${attachedFile.name} ready — hold mic`
+      : LANGUAGES[language].nativeLabel === 'English'
+        ? 'Hold the mic to speak'
+        : `${LANGUAGES[language].nativeLabel} — mic hold කරන්න`,
     recording: 'Listening... release when done',
-    thinking: 'Browsing & thinking...',
-    speaking: 'Speaking — tap to stop',
+    thinking:  'Browsing & thinking...',
+    speaking:  'Speaking — tap to stop',
   }[state];
 
   const startRecording = async () => {
@@ -59,7 +66,9 @@ export default function VoicePage() {
     setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
       mediaRef.current = new MediaRecorder(stream, { mimeType: mime });
       chunksRef.current = [];
       mediaRef.current.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -84,11 +93,11 @@ export default function VoicePage() {
     const formData = new FormData();
     formData.append('audio', new File([blob], 'recording.webm', { type: 'audio/webm' }));
     formData.append('sessionId', sessionId);
-    formData.append('language', language); 
+    formData.append('language', language);
     if (attachedFile) formData.append('file', attachedFile);
 
     try {
-      const res = await fetch('/api/voice', { method: 'POST', body: formData });
+      const res  = await fetch('/api/voice', { method: 'POST', body: formData });
       const data = await res.json();
       if (data.error) { setError(data.error); setState('idle'); return; }
 
@@ -96,33 +105,33 @@ export default function VoicePage() {
         id: Date.now(),
         heard: data.transcription,
         answer: data.answer,
-        lang: language, 
+        lang: language,
         file: attachedFile ? { name: attachedFile.name, type: attachedFile.type } : undefined,
         timestamp: new Date(),
       };
-      
+
       setTurns(prev => [...prev, turn]);
       setAttachedFile(null);
       setState('speaking');
-      speak(data.answer, language); 
+      speak(data.answer, language);
     } catch {
       setError('server connection failed');
       setState('idle');
     }
   };
 
-  // --- Dynamic TTS Language and Rate ---
+  // Dynamic TTS Language and Rate 
   const speak = (text: string, lang: AppLanguage = language) => {
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
-    utt.lang = LANGUAGES[lang].bcp47;  // si-LK / ta-LK / en-US
-    utt.rate = lang === 'si' ? 0.85 : lang === 'ta' ? 0.88 : 0.95; 
-    utt.onend = () => setState('idle');
-    utt.onerror = () => setState('idle'); 
+    utt.lang   = LANGUAGES[lang].bcp47;
+    utt.rate   = lang === 'si' ? 0.85 : lang === 'ta' ? 0.88 : 0.95;
+    utt.onend  = () => setState('idle');
+    utt.onerror = () => setState('idle');
     window.speechSynthesis.speak(utt);
   };
 
-  // --- Language change handler ---
+  // Language change handler 
   const handleLanguageChange = (lang: AppLanguage) => {
     window.speechSynthesis.cancel();
     setLanguage(lang);
@@ -135,6 +144,7 @@ export default function VoicePage() {
     setSessionId(getSessionId());
     setTurns([]);
     setState('idle');
+    setChatOpen(false);
   };
 
   return (
@@ -147,13 +157,41 @@ export default function VoicePage() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(13,107,58,0.4); }
+
+        @keyframes chat-slide-up {
+          from { opacity: 0; transform: translateY(24px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        @keyframes chat-slide-down {
+          from { opacity: 1; transform: translateY(0)    scale(1);    }
+          to   { opacity: 0; transform: translateY(24px) scale(0.97); }
+        }
+        .chat-panel-enter { animation: chat-slide-up   0.28s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+        .chat-panel-exit  { animation: chat-slide-down 0.22s ease-in forwards; }
+
+        @keyframes badge-pop {
+          0%   { transform: scale(0);    }
+          70%  { transform: scale(1.25); }
+          100% { transform: scale(1);    }
+        }
+        .badge-pop { animation: badge-pop 0.3s ease-out forwards; }
+
+        @keyframes pulse-ring {
+          0%   { box-shadow: 0 0 0 0    rgba(0,166,81,0.55); }
+          70%  { box-shadow: 0 0 0 10px rgba(0,166,81,0);    }
+          100% { box-shadow: 0 0 0 0    rgba(0,166,81,0);    }
+        }
+        .pulse-ring { animation: pulse-ring 1.6s ease-out infinite; }
       `}</style>
 
-      <div className="h-screen bg-[#060B15] text-white flex flex-col overflow-hidden">
-        <Navbar 
-          sidebarOpen={sidebarOpen} 
-          onToggleSidebar={() => setSidebarOpen(s => !s)} 
-          turnCount={turns.length} 
+      <div className={`h-screen text-white flex flex-col overflow-hidden ${
+        theme === 'light' ? 'bg-[#f0f4f8]' : 'bg-[#060B15]'
+      }`}>
+
+        <Navbar
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(s => !s)}
+          turnCount={turns.length}
           language={language}
           onLanguageChange={handleLanguageChange}
         />
@@ -169,18 +207,44 @@ export default function VoicePage() {
           <Sidebar open={sidebarOpen} turns={turns} sessionId={sessionId} onNewSession={clearSession} />
 
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-            
-            {/* Main Content Area - ONLY THE AVATAR NOW */}
+
+            {/* Avatar fills the whole area */}
             <div className="flex-1 w-full h-full relative">
-              <AvatarStage state={state} statusMsg={statusMsg} />
+              <AvatarStage state={state} statusMsg={statusMsg} theme={theme} />
+
+              {/*floating chat*/}
+              <FloatingChat
+                turns={turns}
+                chatOpen={chatOpen}
+                setChatOpen={setChatOpen}
+                state={state}
+                onReplay={(text, lang) => speak(text, lang)}
+              />
+
+              {/*theme toggle*/}
+              <button
+                onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+                className="absolute top-4 right-4 z-30 w-9 h-9 rounded-xl flex items-center justify-center border transition-all"
+                style={{
+                  background:  theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)',
+                  borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.12)',
+                }}
+                title="Toggle theme"
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+
             </div>
 
-            {/* Input Bar pinned safely to the bottom */}
+            {/* Input Bar pinned to bottom */}
             <div className="w-full shrink-0 z-20 relative shadow-[0_-20px_40px_rgba(6,11,21,0.8)]">
               <InputBar
-                state={state} statusMsg={statusMsg} attachedFile={attachedFile} error={error}
+                state={state}
+                statusMsg={statusMsg}
+                attachedFile={attachedFile}
+                error={error}
                 onPointerDown={(e) => { e.preventDefault(); if (state === 'idle' || state === 'speaking') startRecording(); }}
-                onPointerUp={(e) => { e.preventDefault(); if (state === 'recording') stopRecording(); }}
+                onPointerUp={(e)   => { e.preventDefault(); if (state === 'recording') stopRecording(); }}
                 onMicClick={() => { if (state === 'speaking') { window.speechSynthesis.cancel(); setState('idle'); } }}
                 onFileChange={setAttachedFile}
               />
